@@ -1,0 +1,1041 @@
+; =============================================================================
+; TITLE    : GRID MANAGEMENT
+; AUTHOR   : ANTONI BURGUERA
+; HISTORY  : 05-JULY-2021 - CREATION
+; COMMENTS : * THERE ARE TWO MATRICES (GRDMATR0 AND GRDMATR1) AND TWO POINTERS
+;              TO THESE MATRICES (GRDSRC AND GRDDST).
+;
+;            * THE MATRIX TO BE PLOTTED IS ALWAYS THE ONE POINTED BY GRDDST.
+;
+;            * THE MATRIX TO BE UPDATED BY THE MOUSE (GRDMUPD) IS ALWAYS THE
+;              ONE POINTED BY GRDDST.
+;
+;            * THE RULES-UPDATE (GRDRUPD) SWITCHES THE POINTERS AND THEN READS
+;              THE NEW SOURCE MATRIX (GRDSRC) TO DETERMINE THE NUMBER OF
+;              NEIGHBORS. THE RESULTING CELL VALUE IS WRITTEN TO THE DESTINA-
+;              TION MATRIX, POINTED BY GRDDST.
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+GRDINIT
+; INITIALIZE THE GRID AS FOLLOWS:
+; * POINTS THE SOURCE GRID POINTER TO GRDMATR0.
+; * POINTS THE DESTINATION GRID POINTER TO GRDMATR1.
+; * RESETS THE COUNTERS (GRDNPLR1, GRDNPLR2, GRDNGEN).
+; * FILLS THE TWO MATRICES (GRDMATR0 AND GRDMATR1) WITH ZEROS.
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+            MOVEM.L A0/D0,-(A7)
+            MOVE.L  #GRDMATR0,(GRDSRC)
+            MOVE.L  #GRDMATR1,(GRDDST)
+            CLR.W   (GRDNPLR1)
+            CLR.W   (GRDNPLR2)
+            CLR.W   (GRDNGEN)
+            LEA     GRDMATR0,A0
+            MOVE.W  #GRDWIDTH*GRDHEIGH*2-1,D0
+.LOOP       CLR.B   (A0)+
+            DBRA.W  D0,.LOOP
+            MOVEM.L (A7)+,A0/D0
+            RTS
+
+; -----------------------------------------------------------------------------
+GRDMUPD
+; GRID UPDATE USING MOUSE. THE INTERFACE IS AS FOLLOWS:
+; * IF MOUSE IS NOT PRESSED OR IS OUTSIDE THE PLOTTED GRID, DOES NOTHING.
+; * IF LEFT MOUSE BUTTON IS PRESSED INSIDE THE GRID:
+;   - A PLAYER 1 (VALUE=1) CELL IS CREATED AT THE MOUSE POSITION IF THE MOUSE
+;     IS ON THE LEFT HALF OF THE GRID.
+;   - A PLAYER 2 (VALUE=2) CELL IS CREATED AT THE MOUSE POSITION IF THE MOUSE
+;     IS ON THE RIGHT HALF OF THE GRID.
+; * IF RIGHT MOUSE BUTTON IS PRESSED INSIDE THE GRID, THE CELL WHERE THE MOUSE
+;   IS IS CLEARED (VALUE=0).
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+ MOVEM.L D0-D7/A0,-(A7)
+ 
+ CLR.L D1
+ CLR.L D2
+ CLR.L D3
+ CLR.L D4
+ MOVE.B (MOUVAL),D0
+ MOVE.W (MOUY),D1
+ MOVE.W (MOUX),D2
+ MOVE  #GRDXOFF,D3 ;X
+ MOVE  #GRDYOFF,D4 ;Y
+ MOVEA.L GRDDST,A0
+ 
+ MOVE #GRDPXHEI,D5 ;OBTENIM LA X DEL CENTRE
+ ADD.W D3,D5
+ 
+ MOVE #GRDXOFF,D7 ;X RIGHT
+ ADD #GRDPXWID,D7
+ 
+ MOVE #GRDYOFF,D6 ;Y DOWN
+ ADD #GRDPXHEI,D6
+ 
+ ;MIRAM SI ESTEIM DEDINS
+ CMP D4,D1
+ BLO .OUT
+ CMP D6,D1
+ BHI .OUT
+ 
+ CMP D3,D2
+ BLO .OUT
+ CMP D7,D2
+ BHI .OUT
+ ;A PARTIR D'AQUI JA SABEM QUE ESTEIM DEDINS
+ CMP D5,D2 ;A QUINA BANDA ESTEIM
+ BHI .PLAYER2
+ 
+.PLAYER1
+ CLR.L D5
+ CLR.L D6
+ CLR.L D7
+ 
+ ;TENIM ALGUN BOTO PITJAT?
+ BTST #0,D0 
+ BNE .LFT1
+ BTST #1,D0
+ BNE .RHT1
+ JMP .OUT
+ 
+.LFT1 
+ MOVE.B #1,D5 ;FICAM 1 SI HEM PITJAT ESQUERRE
+ JMP .SURTI
+.RHT1
+ MOVE.B #0,D5 ;FICAM 0 D'ALTRA BANDA
+ JMP .SURTI
+ 
+.PLAYER2
+ CLR.L D5
+ CLR.L D6
+ CLR.L D7
+ 
+ BTST #0,D0
+ BNE .LFT2
+ BTST #1,D0
+ BNE .RHT2
+ JMP .OUT
+ 
+.LFT2
+ MOVE.B #2,D5
+ JMP .SURTI
+.RHT2
+ MOVE.B #0,D5
+ 
+.SURTI 
+ ;CALCULAM LA POSICIO DINS LA GRAELLA
+ SUB D3,D2
+ SUB D4,D1
+ 
+ CLR.W D3
+ CLR.W D4
+ 
+ DIVU #12,D2
+ DIVU #12,D1
+ MOVE.L D2,D3 ;X
+ MOVE.L D1,D4 ;Y
+ 
+ AND.L #$FFFF0000,D2 ;X->MIRAM EL RESIDU
+ BEQ .SEGUEIX
+ CLR.L D2
+ MOVE.W D3,D2
+ ADD #1,D2 ;SI TE RESIDU SUMAM 1
+ JMP .SURT 
+ 
+.SEGUEIX
+ MOVE.L D3,D2 ;ENS QUEDAM EL VALOR ACTUAL
+ 
+.SURT
+ AND.L #$FFFF0000,D1 ;Y->MIRAM EL RESIDU
+ BEQ .SEGUEIX1
+ CLR.L D1
+ MOVE.W D4,D1
+ ADD.B #1,D1 ;SI TE RESIDU SUMAM 1
+ JMP .SRT2
+.SEGUEIX1
+ MOVE.L D4,D1
+ 
+.SRT2
+ CLR.L D3
+ CLR.L D4
+ ;AQUI TENIMA D1 LA FILA I A D2 LA COLUMNA
+ SUB #1,D1
+ SUB #1,D2
+ MOVE #64,D3 ;COLUMNES
+ MULU D1,D3
+ ADD  D2,D3
+ 
+ ADDA.L D3,A0
+ MOVE.B D5,(A0)
+ 
+ .OUT:
+ 
+ MOVEM.L (A7)+,D0-D7/A0
+ 
+ RTS
+
+
+; -----------------------------------------------------------------------------
+GRDRUPD
+; UPDATES THE GRID ACCORDING TO 2-PLAYER GAME OF LIFE RULES AS FOLLOWS:
+; * ADDS 1 TO THE NUMBER OF GENERATIONS (GRDNGEN)
+; * SWITCHES THE MATRIX POINTERS (GRDDST AND GRDSRC).
+; * CHECKS THE NEIGHBORS USING THE NEW SOURCE MATRIX (POINTER BY GRDDRC)
+; * THE RESULTS OF APPLYING THE RULES ARE WRITTEN INTO THE NEW DESTINATION
+;   MATRIX (POINTED BY GRDDST).
+; * THE RULES ARE THE FOLLOWING, WHERE P1 AND P2 ARE 1 AND 2 RESPECTIVELY,
+;   DEAD CELLS ARE REPRESENTED BY 0 AND NP1 AND NP2 DENOTE THE NUMBER OF
+;   PLAYER 1 AND PLAYER 2 NEIGHBORS RESPECTIVELY:
+;   + SURVIVAL RULES
+;     - IF CELL IS P1 AND NP1-NP2 IS 2 OR 3 -> NEW VALUE IS P1
+;     - IF CELL IS P1 AND NP1-NP2 IS 1 AND NP1>=2 -> NEW VALUE IS P1
+;     - OTHERWISE -> NEW VALUE IS 0
+;     - IF CELL IS P2 AND NP2-NP1 IS 2 OR 3 -> NEW VALUE IS P2
+;     - IF CELL IS P2 AND NP2-NP1 IS 1 AND NP2>=2 -> NEW VALUE IS P2
+;     - OTHERWISE -> NEW VALUE IS 0
+;   + BIRTH RULES
+;     - THE CELL HAS EXACTLY THREE P1 NEIGHBOURS AND THE NUMBER
+;       OF P2 NEIGHBOURS IS DIFFERENT FROM THREE. IN THIS CASE A
+;       P1 TOKEN IS BORN IN THE CELL.
+;     - THE CELL HAS EXACTLY THREE P2 NEIGHBOURS AND THE NUMBER
+;       OF P1 NEIGHBOURS IS DIFFERENT FROM THREE. IN THIS CASE A
+;       P2 TOKEN IS BORN IN THE CELL.
+;     - THE CELL HAS EXACTLY THREE WHITE AND THREE BLACK NEIGHBOURS.
+;       IN THIS CASE AN UNBIASED COIN DETERMINES WHETHER A WHITE OR
+;       BLACK TOKEN IS BORN IN THE CELL.
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+ MOVEM.L D0-D7/A0,-(A7)
+
+ 
+  ADD.W #1,GRDNGEN ;SUMAM EL NOMBRE DE GENERACIONS
+  
+  MOVEA.L GRDSRC,A0
+  MOVEA.L GRDDST,A1
+  
+  MOVE.L A1,(GRDSRC)
+  MOVE.L A0,(GRDDST) ;CANVIAM PUNTERS
+  
+  MOVE.L #0,A1
+  MOVE.L #0,A0
+  MOVE.L #0,A2
+  MOVE.L #0,A4
+  
+  MOVE.W #2048,ETIQUETA ;ETIQUETA PER EL LOOP
+  
+  MOVEA.L GRDSRC,A3 
+  MOVEA.L GRDDST,A4  
+  
+  LOOP:
+  CLR.L D0
+  CLR PLAYER1
+  CLR PLAYER2
+  SUB.W #1,ETIQUETA 
+  MOVEA A3,A1
+  MOVEA A3,A2
+  SUBA #64,A1 ;VEINATS SUPERIORS
+  ADDA #64,A2 ;VEINATS INFERIORS
+  
+  SUBQ.W #2,A7 ;PRIMER VEINAT DALT
+  MOVE.L A1,-(A7)
+  JSR COMPROVA ;COMPROVAM QUE ESTA DEDINS LA MATRIU
+  ADDQ.L #4,A7
+  MOVE.W (A7),D1 ;FICAM AL REGISTRE
+  ADDQ.L #2,A7
+  
+  SUBA #1,A1 ;SEGON VEINAT DALT
+  SUBQ.W #2,A7
+  MOVE.L A1,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D0
+  ADDQ.L #2,A7
+  
+  ADDA #2,A1 ;TERCER VEINAT DALT
+  SUBQ.W #2,A7
+  MOVE.L A1,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D2
+  ADDQ.L #2,A7
+  
+  SUBQ.W #2,A7 ;PRIMER VEINAT BAIX
+  MOVE.L A2,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D6
+  ADDQ.L #2,A7
+
+  SUBA #1,A2 ;SEGON VEINAT BAIX
+  SUBQ.W #2,A7
+  MOVE.L A2,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D5
+  ADDQ.L #2,A7
+  
+  ADDA #2,A2 ;TERCER VEINAT BAIX
+  SUBQ.W #2,A7
+  MOVE.L A2,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D7
+  ADDQ.L #2,A7
+  
+  SUBA #1,A3 ;VEINAT ESQUERRE
+  SUBQ.W #2,A7
+  MOVE.L A3,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D3
+  ADDQ.L #2,A7
+  
+  ADDA #2,A3 ;VEINAT DRET
+  SUBQ.W #2,A7
+  MOVE.L A3,-(A7)
+  JSR COMPROVA
+  ADDQ.L #4,A7
+  MOVE.W (A7),D4
+  ADDQ.L #2,A7
+  
+  ;D0-D7 VEINATS
+  MOVE.W D0,-(A7)
+  JSR VEINATS ;SUMAM EL NOMBRE DE VEINATS
+  MOVE.W (A7)+,D0
+  MOVE.W D1,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D1
+  MOVE.W D2,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D2
+  MOVE.W D3,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D3
+  MOVE.W D4,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D4
+  MOVE.W D5,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D5
+  MOVE.W D6,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D6
+  MOVE.W D7,-(A7)
+  JSR VEINATS
+  MOVE.W (A7)+,D7
+  CLR.W D0
+  CLR.W D1
+  
+  ;AQUI JA TENIM EL NOMBRE DE VEINATS
+  
+  ;MIRAM EL VALOR DE LA CEL·LA ACTUAL
+  SUBA #1,A3
+  MOVE.B (A3),D1
+  ADDA #1,A3
+  
+  SUBQ.W #2,A7
+  
+  MOVE.W D1,-(A7)
+  MOVE.W PLAYER1,-(A7)
+  MOVE.W PLAYER2,-(A7)
+  JSR ACTUALITZACIO ;ACTUALITZAM EL SEU VALOR
+  ;RECUPERAR VALOR PILA
+  ADDQ #6,A7
+  MOVE.W (A7)+,D1 
+  MOVE.B D1,(A4)+ ;FICAM NOU VALOR MATRIU DST
+  
+  MOVE ETIQUETA,D0
+  
+  DBRA D0,LOOP
+  
+  MOVEM.L (A7)+,D0-D7/A0
+  
+  RTS
+  
+VEINATS ;MIRAM QUIN TIPUS DE VEINAT ES I EL SUMAM
+ CMP #2,4(A7)
+ BEQ PLYR2
+ CMP #1,4(A7)
+ BEQ PLYR1
+ 
+ BRA SRT
+ PLYR2:
+ ADD.W #1,PLAYER2
+ BRA SRT
+ PLYR1:
+ ADD.W #1,PLAYER1
+ 
+ SRT:
+
+ RTS
+ 
+ACTUALITZACIO ;MIRAM L'ESTAT ACTUAL DE LA CEL·LA
+;I ELS VEINATS I FICAM A LA PILA EL NOU ESTAT
+
+ MOVE.W D0,-(A7)
+ 
+ CMP #1,10(A7)
+ BEQ J1
+ CMP #2,10(A7)
+ BEQ J2
+ JMP MORTA
+ 
+ J1: ;CAS JUGADOR 1
+ MOVE.W 8(A7),D0
+ SUB.W 6(A7),D0
+ CMP #2,D0
+ BEQ ES1
+ CMP #3,D0
+ BEQ ES1
+ CMP #1,D0
+ BNE ES0
+ CMP #2,8(A7)
+ BHS ES1
+ JMP ES0
+ 
+ ES1: ;LA NOVA CEL·LA ES 1
+ MOVE #1,12(A7)
+ JMP SURT2
+ 
+ ES0:
+ MOVE.W #0,12(A7) ;LA NOVA CEL·LA ES 0
+ JMP SURT2
+ 
+ J2: ;CAS JUGADOR 2
+ MOVE 6(A7),D0
+ SUB.W 8(A7),D0
+ CMP #2,D0
+ BEQ ES2
+ CMP #3,D0
+ BEQ ES2
+ CMP #1,D0
+ BNE ES0
+ CMP #2,6(A7)
+ BHS ES2
+ JMP ES0
+ 
+ ES2: ;LA NOVA CEL·LA ES 2
+ MOVE #2,12(A7)
+ JMP SURT2
+ 
+ MORTA: ;CAS ES MORTA
+ CMP #3,8(A7)
+ BEQ MIR2
+ CMP.W #3,6(A7)
+ BNE ES0
+ JMP ES2
+ 
+ MIR2:
+ CMP #3,6(A7)
+ BNE ES1
+ CLR.L D1
+ JSR UTLRAND
+ ;TIRMONEDA
+ MOVE.W D1,12(A7)
+ 
+ SURT2:
+ 
+ MOVE.W (A7)+,D0
+ 
+ RTS
+ 
+COMPROVA ;MIRAM SI LA DIRECCIO ESTÀ DINS LA GRAELLS
+ MOVE.L A1,-(A7)
+ MOVE.L A2,-(A7)
+ MOVE.L A3,-(A7)
+ 
+ MOVE.L 16(A7),A1 ;DIRECCIO CELDA
+ MOVEA.L GRDSRC,A2 ;DIRECCIO PRIMERA GRAELLA
+ MOVE A2,A3
+ ADD #2048,A3 ; DIRECCIO DARRERA GRAELLA
+ CMPA A2,A1
+ BLO .FORA
+ CMPA A3,A1
+ BHI .FORA
+ 
+ MOVE.B #0,20(A7)
+ MOVE.B (A1),21(A7)
+ BRA .SURT
+.FORA
+ MOVE.W #0,20(A7) ;SI ESTEIM FORA FICAM UN 0
+.SURT
+
+ MOVE.L (A7)+,A3
+ MOVE.L (A7)+,A2
+ MOVE.L (A7)+,A1
+ RTS
+
+
+; -----------------------------------------------------------------------------
+GRDSAVE
+; SAVES THE GRID INTO A FILE IN CSV FORMAT
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; NOTE     : THE LOCAL BUFFER SIZE MUST BE MAX(512,2*GRDWIDTH+1). PLEASE CHANGE
+;            IT ACCORDINGLY IF GRDWIDTH*2+1 IS LARGER THAN 512.
+; -----------------------------------------------------------------------------
+            MOVEM.L D0-D7/A0-A6,-(A7)       ; TO BE OPTIMIZED
+            MOVE.B  #50,D0                  ; CLOSE ALL FILES (RECOMMENDED)
+            TRAP    #15
+            SUB.L   #512,A7                 ; ROW BUFFER IN LOCAL MEMORY
+            MOVE.B  #58,D0                  ; SHOW FILE DIALOG TASK
+            MOVE.L  #1,D1                   ; DISPLAY SAVE DIALOG
+            LEA     .MSG,A1                 ; STANDARD MESSAGE
+            LEA     .FILTER,A2              ; NO FILTER
+            MOVE.L  A7,A3                   ; FILE NAME BUFFER
+            CLR.W   (A3)                    ; ENSURE THERE IS NO STRING
+            TRAP    #15
+            TST.B   D1
+            BEQ     .END                    ; IF CANCELLED, DO NOTHING
+            MOVE.L  A3,A1                   ; PLACE THE FILENAME INTO A1
+            MOVE.B  #52,D0                  ; CREATE NEW FILE
+            TRAP    #15
+            TST.W   D0                      ; CHECK CREATION ERROR
+            BNE     .END                    ; DO NOTHING MORE IF ERROR
+            MOVE.L  A7,A6                   ; PUT A6 INTO START OF BUFFER
+            MOVE.L  A7,A1                   ; PUT A1 INTO START OF BUFFER
+            MOVE.L  (GRDDST), A0            ; A0: POINTER TO THE DATA TO WRITE
+            MOVE.W  #GRDHEIGH-1,D3          ; D3: NUMBER OF ROWS - 1
+.LOOPY      MOVE.W  #GRDWIDTH-1,D2          ; D2: NUMBER OF COLUMNS - 1
+.LOOP       MOVE.B  #'0',D0                 ; ADD CHAR '0' AND THE CELL VALUE
+            ADD.B   (A0)+,D0
+            MOVE.B  D0, (A6)+               ; STORE IT IN THE BUFFER
+            MOVE.B  #',',(A6)+              ; NOW PUT THE COMMA
+            DBRA.W  D2,.LOOP
+            MOVE.B  #$0D,-1(A6)             ; STORE CARRIAGE RETURN (REMOVE ',')
+            MOVE.B  #$0A,(A6)               ; STORE LINE FEED
+            MOVE.B  #54,D0                  ; WRITE TO FILE TASK NUMBER
+            MOVE.L  #GRDWIDTH*2+1,D2        ; NUMBER OF BYTES TO WRITE
+            TRAP    #15                     ; WRITE (A1 IS ALREADY THERE)
+            MOVE.L  A1,A6                   ; GO BACK TO THE BUFFER START
+            DBRA.W  D3,.LOOPY
+            MOVE.B  #56,D0                  ; CLOSE FILE
+            TRAP    #15
+.END        ADD.L   #512,A7                 ; RESTORE STACK
+            MOVEM.L (A7)+,D0-D7/A0-A6       ; TO BE OPTIMIZED
+            RTS
+.MSG        DC.B    'SELECT A CSV FILE TO SAVE',0
+.FILTER     DC.B    '*.CSV',0
+            DS.W    0
+
+; -----------------------------------------------------------------------------
+GRDLOAD
+; LOADS THE GRID FROM A CSV FORMATTED FILE
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; NOTE     : THE LOCAL BUFFER SIZE MUST BE MAX(512,2*GRDWIDTH+1). PLEASE CHANGE
+;            IT ACCORDINGLY IF GRDWIDTH*2+1 IS LARGER THAN 512.
+; -----------------------------------------------------------------------------
+            MOVEM.L D0-D7/A0-A6,-(A7)       ; TO BE OPTIMIZED
+            MOVE.B  #50,D0                  ; CLOSE ALL FILES (RECOMMENDED)
+            TRAP    #15
+            SUB.L   #512,A7                 ; ROW BUFFER IN LOCAL MEMORY
+            MOVE.B  #58,D0                  ; SHOW FILE DIALOG TASK
+            CLR.L   D1                      ; DISPLAY LOAD DIALOG
+            LEA     .MSG,A1                 ; STANDARD MESSAGE
+            LEA     .FILTER,A2              ; NO FILTER
+            MOVE.L  A7,A3                   ; FILE NAME BUFFER
+            CLR.W   (A3)                    ; ENSURE THERE IS NO STRING
+            TRAP    #15
+            TST.B   D1
+            BEQ     .END                    ; IF CANCELLED, DO NOTHING
+            MOVE.L  A3,A1                   ; PLACE THE FILENAME INTO A1
+            MOVE.B  #51,D0                  ; OPEN EXISTING FILE
+            TRAP    #15
+            TST.W   D0                      ; CHECK ERRORS
+            BNE     .END                    ; IF ERRORS, DO NOTHING MORE
+            MOVE.L  A7,A6                   ; PUT A6 INTO START OF BUFFER
+            MOVE.L  A7,A1                   ; PUT A1 INTO START OF BUFFER
+            MOVE.L  (GRDDST), A0            ; POINTER TO STORE PROCESS. DATA
+            MOVE.W  #GRDHEIGH-1,D3
+.LOOP       MOVE.L  A6,A1
+            MOVE.B  #53,D0                  ; READ DATA TASK NUMBER
+            MOVE.L  #GRDWIDTH*2+1,D2        ; NUMBER OF BYTES TO READ
+            TRAP    #15                     ; READ THE DATA
+            MOVE.W  #GRDWIDTH-1,D2
+.COPY       MOVE.B  (A1)+,D0                ; PICK ONE LOADED CHARACTER
+            SUB.B   #'0',D0                 ; CONVERT FROM ASCII TO NUMBER
+            MOVE.B  D0,(A0)+                ; STORE DATA
+            ADDQ.L  #1,A1                   ; SKIP THE COMMA
+            DBRA.W  D2,.COPY
+            DBRA.W  D3,.LOOP
+            MOVE.B  #56,D0                  ; CLOSE FILE
+            TRAP    #15
+.END        ADD.L   #512,A7                 ; RESTORE STACK
+            MOVEM.L (A7)+,D0-D7/A0-A6       ; TO BE OPTIMIZED
+            RTS
+.MSG        DC.B    'SELECT A CSV FILE TO LOAD',0
+.FILTER     DC.B    '*.CSV',0
+            DS.W    0
+
+; -----------------------------------------------------------------------------
+GRDLLEFT
+; LOADS THE LEFT PART OF THE GRID FROM A CSV FORMATTED FILE
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; NOTE     : THE LOCAL BUFFER SIZE MUST BE MAX(512,2*GRDWIDTH+1). PLEASE CHANGE
+;            IT ACCORDINGLY IF GRDWIDTH*2+1 IS LARGER THAN 512.
+; NOTE     : ALL THE ACTIVE CELLS ARE STORED AS PLAYER 1 INDEPENDLY OF THEIR
+;            ACTUAL VALUE.
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+            MOVEM.L D0-D7/A0-A6,-(A7)       ; TO BE OPTIMIZED
+            MOVE.B  #50,D0                  ; CLOSE ALL FILES (RECOMMENDED)
+            TRAP    #15
+            SUB.L   #512,A7                 ; ROW BUFFER IN LOCAL MEMORY
+            MOVE.B  #58,D0                  ; SHOW FILE DIALOG TASK
+            CLR.L   D1                      ; DISPLAY LOAD DIALOG
+            LEA     .MSG,A1                 ; STANDARD MESSAGE
+            LEA     .FILTER,A2              ; NO FILTER
+            MOVE.L  A7,A3                   ; FILE NAME BUFFER
+            CLR.W   (A3)                    ; ENSURE THERE IS NO STRING
+            TRAP    #15
+            TST.B   D1
+            BEQ     .END                    ; IF CANCELLED, DO NOTHING
+            MOVE.L  A3,A1                   ; PLACE THE FILENAME INTO A1
+            MOVE.B  #51,D0                  ; OPEN EXISTING FILE
+            TRAP    #15
+            TST.W   D0                      ; CHECK ERRORS
+            BNE     .END                    ; IF ERRORS, DO NOTHING MORE
+            MOVE.L  A7,A6                   ; PUT A6 INTO START OF BUFFER
+            MOVE.L  A7,A1                   ; PUT A1 INTO START OF BUFFER
+            MOVE.L  (GRDDST), A0            ; POINTER TO STORE PROCESS. DATA
+            MOVE.W  #GRDHEIGH-1,D3
+.LOOP       MOVE.L  A6,A1
+            MOVE.B  #53,D0                  ; READ DATA TASK NUMBER
+            MOVE.L  #GRDWIDTH*2+1,D2        ; NUMBER OF BYTES TO READ
+            TRAP    #15                     ; READ THE DATA
+            MOVE.W  #GRDHEIGH-1,D2
+.COPY       MOVE.B  (A1)+,D0                ; PICK ONE LOADED CHARACTER
+            SUB.B   #'0',D0                 ; CONVERT FROM ASCII TO NUMBER
+            CMP #2,D0
+            BNE .NOAGAF
+            MOVE.B #0,D0 ;NOMÉS LLEGIM ELS 1'S I 0'S
+.NOAGAF
+            MOVE.B  D0,(A0)+                ; STORE DATA
+            ADDQ.L  #1,A1                   ; SKIP THE COMMA
+            DBRA.W  D2,.COPY
+            ADDA #32,A0
+            DBRA.W  D3,.LOOP
+            
+            MOVE.B  #56,D0                  ; CLOSE FILE
+            TRAP    #15
+.END        ADD.L   #512,A7                 ; RESTORE STACK
+            MOVEM.L (A7)+,D0-D7/A0-A6       ; TO BE OPTIMIZED
+            RTS
+.MSG        DC.B    'SELECT A CSV FILE TO LOAD',0
+.FILTER     DC.B    '*.CSV',0
+            DS.W    0
+
+
+; -----------------------------------------------------------------------------
+GRDLRGT
+; LOADS THE RIGHT PART OF THE GRID FROM A CSV FORMATTED FILE
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; NOTE     : THE LOCAL BUFFER SIZE MUST BE MAX(512,2*GRDWIDTH+1). PLEASE CHANGE
+;            IT ACCORDINGLY IF GRDWIDTH*2+1 IS LARGER THAN 512.
+; NOTE     : ALL THE ACTIVE CELLS ARE STORED AS PLAYER 2 INDEPENDLY OF THEIR
+;            ACTUAL VALUE.
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+            MOVEM.L D0-D7/A0-A6,-(A7)       ; TO BE OPTIMIZED
+            MOVE.B  #50,D0                  ; CLOSE ALL FILES (RECOMMENDED)
+            TRAP    #15
+            SUB.L   #512,A7                 ; ROW BUFFER IN LOCAL MEMORY
+            MOVE.B  #58,D0                  ; SHOW FILE DIALOG TASK
+            CLR.L   D1                      ; DISPLAY LOAD DIALOG
+            LEA     .MSG,A1                 ; STANDARD MESSAGE
+            LEA     .FILTER,A2              ; NO FILTER
+            MOVE.L  A7,A3                   ; FILE NAME BUFFER
+            CLR.W   (A3)                    ; ENSURE THERE IS NO STRING
+            TRAP    #15
+            TST.B   D1
+            BEQ     .END                    ; IF CANCELLED, DO NOTHING
+            MOVE.L  A3,A1                   ; PLACE THE FILENAME INTO A1
+            MOVE.B  #51,D0                  ; OPEN EXISTING FILE
+            TRAP    #15
+            TST.W   D0                      ; CHECK ERRORS
+            BNE     .END                    ; IF ERRORS, DO NOTHING MORE
+            MOVE.L  A7,A6                   ; PUT A6 INTO START OF BUFFER
+            MOVE.L  A7,A1                   ; PUT A1 INTO START OF BUFFER
+            MOVE.L  (GRDDST), A0            ; POINTER TO STORE PROCESS. DATA
+            MOVE.W  #GRDHEIGH-1,D3
+.LOOP       MOVE.L  A6,A1
+            MOVE.B  #53,D0                  ; READ DATA TASK NUMBER
+            MOVE.L  #GRDWIDTH*2+1,D2        ; NUMBER OF BYTES TO READ
+            TRAP    #15                     ; READ THE DATA
+            MOVE.W  #GRDHEIGH-1,D2
+            ADDA #32,A0
+            ADDA #64,A1
+.COPY       MOVE.B  (A1)+,D0                ; PICK ONE LOADED CHARACTER
+            SUB.B   #'0',D0                 ; CONVERT FROM ASCII TO NUMBER
+            CMP #1,D0
+            BNE .NOAGAF
+            MOVE.B #0,D0
+.NOAGAF
+            MOVE.B  D0,(A0)+                ; STORE DATA
+            ADDQ.L  #1,A1                   ; SKIP THE COMMA
+            DBRA.W  D2,.COPY
+            DBRA.W  D3,.LOOP
+            
+            MOVE.B  #56,D0                  ; CLOSE FILE
+            TRAP    #15
+.END        ADD.L   #512,A7                 ; RESTORE STACK
+            MOVEM.L (A7)+,D0-D7/A0-A6       ; TO BE OPTIMIZED
+            RTS
+.MSG        DC.B    'SELECT A CSV FILE TO LOAD',0
+.FILTER     DC.B    '*.CSV',0
+            DS.W    0
+
+
+; -----------------------------------------------------------------------------
+GRDPLOT
+; PLOTS THE GRID
+; INPUT    : NONE
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+ MOVEM.L D0-D7/A0-A1,-(A7)
+ 
+ CLR.L D7
+ 
+ MOVE #32,D6
+ SUB #1,D6
+ MOVE #GRDXOFF,D1
+ MOVE #GRDYOFF,D2
+ MOVEA.L GRDDST,A0
+ ;REINICIAM JUGADORS
+ MOVE.W #0,GRDNPLR1    
+ MOVE.W #0,GRDNPLR2 
+   
+ LP1:
+ MOVE #64,D5
+ SUB #1,D5 ;REINICIAM LOOP2
+ 
+ MOVE D1,D3
+ MOVE D2,D4
+ ADD #GRDSZCEL,D3 ;COORDENADES CEL·LA
+ ADD #GRDSZCEL,D4
+ 
+ LP2:
+ MOVE.B (A0)+,D7 ;MIRAM EL VALOR
+ MOVE.W D7,-(A7)
+ JSR PINTA ;DEFINIM EL COLOR DE LA CEL·LA
+ ADDA #2,A7
+ CLR.L D0
+ MOVE.B #87,D0 ;LA PINTAM
+ TRAP #15
+ ADD #GRDSZCEL,D1 ;NOVA CEL·LA
+ ADD #GRDSZCEL,D3
+ DBRA D5,LP2
+ 
+ ADD #GRDSZCEL,D2 ;NOVA FILA
+ MOVE #GRDXOFF,D1
+ 
+ DBRA D6,LP1
+ 
+ ;POSAM MARCADORS
+ CLR.L D0
+ CLR.L D1
+ CLR.L D2
+ 
+ ;MARCADOR JUGADOR 1
+ MOVE.B #81,D0
+ MOVE.L #CLRLTBLU,D1 ;COLOR
+ TRAP #15
+ MOVE.B #80,D0
+ TRAP #15
+ 
+ MOVE.B #87,D0
+ MOVE.W #GRDXOFF,D1
+ MOVE.W #GRDYOFF,D2
+ SUB.W #CHRHEIGH+7,D2
+ 
+ MOVE.W D1,D3
+ MOVE.W #GRDYOFF,D4
+ SUB.W #6,D4
+ ADD #36,D3
+ TRAP #15 ;RECTANGLE
+ 
+ ADD.W #12,D1 ;POSICIO NUMERO->TASCA 11
+ DIVU.W #15,D2
+ LSR.W #3,D1
+ LSL.W #8,D1
+ OR.W D2,D1
+ MOVE.B #11,D0
+ TRAP #15
+ 
+ CLR.L D1
+ MOVE.B #3,D0
+ MOVE.W (GRDNPLR1),D1
+ TRAP #15
+ ;MARCADOR JUGADOR 2
+ 
+ CLR.L D2
+ CLR.L D1
+ 
+ MOVE.W #GRDYOFF,D2
+ SUB.W #CHRHEIGH+7,D2
+ 
+ CLR.L D0
+ MOVE.B #81,D0
+ MOVE.L #CLRLTRED,D1 ;COLOR
+ TRAP #15
+ MOVE.B #80,D0
+ TRAP #15
+ CLR.L D1
+ 
+ MOVE.B #87,D0 
+ MOVE.W #GRDXOFF,D1
+ ADD.W #728,D1
+ MOVE.W D1,D3
+ ADD #36,D3
+ TRAP #15
+ 
+ ADD.W #12,D1
+ DIVU.W #15,D2
+ LSR.W #3,D1
+ LSL.W #8,D1
+ OR.W D2,D1
+ MOVE.B #11,D0
+ TRAP #15
+ 
+ CLR.L D1
+ MOVE.B #3,D0
+ MOVE.W (GRDNPLR2),D1
+ TRAP #15
+ 
+ CLR.L D2
+ ;MARCADOR GENERACIONS
+ MOVE.W #GRDYOFF,D2
+ SUB.W #CHRHEIGH+7,D2
+ 
+ MOVE.B #81,D0
+ MOVE.L #CLRLTGRN,D1 ;COLOR
+ TRAP #15
+ MOVE.B #80,D0
+ TRAP #15
+ 
+ CLR.L D1
+ MOVE.B #87,D0
+ MOVE.W #SCRWIDTH,D1
+ DIVU #2,D1
+ SUB #15,D1
+ 
+ MOVE.W D1,D3
+ ADD #36,D3
+ TRAP #15
+ 
+ ADD.W #12,D1
+ DIVU.W #15,D2
+ LSR.W #3,D1
+ LSL.W #8,D1
+ OR.W D2,D1
+ MOVE.B #11,D0
+ TRAP #15
+ 
+ CLR.L D1
+ MOVE.B #3,D0
+ MOVE.W (GRDNGEN),D1
+ TRAP #15
+ 
+ JSR MARCADOR ;ASTERISC
+ 
+ 
+ 
+ MOVEM.L (A7)+,D0-D7/A0-A1       ; TO BE OPTIMIZED
+
+ 
+ RTS
+ 
+ PINTA:
+ MOVE.W D0,-(A7)
+ MOVE.W D1,-(A7)
+ MOVE.W D2,-(A7)
+ CLR.L D0
+ CLR.L D1
+ CLR.L D2
+ 
+ MOVE.B #80,D0
+ MOVE.L #CLRLTGRN,D1 ;COLOR PINTAT
+ TRAP #15
+ CLR.L D0
+ CLR.L D1
+ MOVE.B #93,D0
+ MOVE.B #1,D1 ;GRUIXA
+ TRAP #15
+ CLR.L D0
+ CLR.L D1
+ 
+ MOVE.B 11(A7),D2 ;QUIN JUGADOR ES
+ CMP #0,D2
+ BEQ ESS0
+ CMP #1,D2
+ BEQ ESS1
+ 
+ ESS2:
+ ;AFEGIM JUGADOR 2 AL CONTADOR
+ ADD.W #1,GRDNPLR2 
+ MOVE.B #81,D0
+ MOVE.L #CLRLTRED,D1 ;COLOR VERMELL
+ TRAP #15
+ JMP FORA
+ ESS1:
+ ;AFEGIM JUGADOR 1 AL CONTADOR
+ ADD.W #1,GRDNPLR1
+ MOVE.B #81,D0
+ MOVE.L #CLRLTBLU,D1 ;COLOR BLAU
+ TRAP #15
+ JMP FORA
+ ESS0:
+ MOVE.B #81,D0
+ MOVE.L #CLRBLACK,D1 ;COLOR NEGRE
+ TRAP #15
+ 
+ FORA:
+ MOVE.W (A7)+,D2
+ MOVE.W (A7)+,D1
+ MOVE.W (A7)+,D0
+ 
+ RTS
+
+ MARCADOR:
+ MOVEM.L D0-D4/A1,-(A7)
+ 
+ CLR.L D1
+ CLR.L D2
+ CLR.L D3
+ CLR.L D4
+ MOVE.L #0,A0
+ 
+ MOVE.W (GRDNPLR1),D3
+ MOVE.W (GRDNPLR2),D4
+ CMP D3,D4
+ BHI .GUANYA2
+.GUANYA1:
+ MOVE.W #GRDXOFF,D1 ;X JUGADOR 1
+ MOVE.W #GRDYOFF,D2 ;Y COMUNA
+ SUB.W #CHRHEIGH+7,D2
+ SUB.W #12,D2
+ 
+ DIVU.W #15,D2 ;POSICIO DEL QUADRAT ASTERISC
+ LSR.W #3,D1
+ LSL.W #8,D1
+ OR.W D2,D1
+ MOVE.B #11,D0
+ TRAP #15
+ 
+ MOVE.B #81,D0
+ MOVE.L #CLRLTBLU,D1 ;COLOR
+ TRAP #15
+ MOVE.B #80,D0
+ TRAP #15
+ 
+ CLR.L D0
+ CLR.L D1
+ MOVE.B (CHRWIN),D1 ;CARACTER ASTERISC
+ MOVE.B #6,D0
+ TRAP #15 ;EL MOSTRAM
+ 
+ CMP D3,D4
+ BLO .SURT ;SI NO ES COMPLEIX AIXÒ LLAVORS SERÀN IGUALS
+ ;I HAUREM DE MOSTRAR ELS DOS ASTERISCS
+ 
+.GUANYA2:
+ CLR.L D1
+ CLR.L D2
+ MOVE.W #GRDXOFF,D1 ;X JUGADOR 1
+ MOVE.W #GRDYOFF,D2 ;Y COMUNA
+ SUB.W #CHRHEIGH+7,D2
+ ADD.W #735,D1
+ SUB.W #12,D2
+ 
+ DIVU.W #15,D2 ;POSICIO
+ LSR.W #3,D1
+ LSL.W #8,D1
+ OR.W D2,D1
+ MOVE.B #11,D0
+ TRAP #15
+ 
+ MOVE.B #81,D0
+ MOVE.L #CLRLTRED,D1 ;COLOR
+ TRAP #15
+ MOVE.B #80,D0
+ TRAP #15
+ 
+ CLR.L D0
+ CLR.L D1
+ MOVE.B (CHRWIN),D1 ;CARACTER
+ MOVE.B #6,D0
+ TRAP #15
+ 
+.SURT:
+ MOVEM.L (A7)+,D0-D4/A1
+ RTS
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*~Font name~Courier New~
+*~Font size~10~
+*~Tab type~1~
+*~Tab size~4~

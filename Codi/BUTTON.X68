@@ -1,0 +1,311 @@
+; =============================================================================
+; TITLE    : BUTTON MANAGEMENT
+; AUTHOR   : ANTONI BURGUERA
+; HISTORY  : 05-JULY-2021 - CREATION
+; COMMENTS : * A BUTTON IS DEFINED BY A STATIC DATA BLOCK (SDB), WHICH DOES NOT
+;              CHANGE OVER TIME, AND A VARIABLE DATA BLOCK (VDB), THAT CAN
+;              CHANGE OVER TIME. CHANGES IN THE VDB ARE PRODUCED WHEN CALLING
+;              SUBROUTINE BTNUPD.
+;
+;            * THE BUTTON SDB (CAN BE IN ROM) HAS THE FOLLOWING FIELDS. THE
+;              NUMBER DENOTES THE OFFSET WITH RESPECT TO THE SDB START:
+;
+;                +0  - WORD - YTOP COORDINATE (PIXELS)
+;                +2  - WORD - XLEFT COORDINATE (PIXELS)
+;                +4  - WORD - HEIGHT (PIXELS)
+;                +6  - WORD - WIDTH (PIXELS)
+;                +8  - LONG - CALLBACK POINTER
+;                +12 - BYTE STRING - ZERO TERMINATED STRING. TEXT TO SHOW.
+;
+;            * THE BUTTON VDB (MUST BE IN RAM) IS:
+;
+;                +0 - LONG - POINTER TO THE STATIC DATABLOCK
+;                +4 - BYTE - STATUS WITH FORMAT XXXXXCPI WHERE:
+;                            - I (BIT 0) - 1=MOUSE INSIDE, 0=MOUSE OUTSIDE
+;                            - P (BIT 1) - 1=MOUSE PRESSED INSIDE
+;                                          0=MOUSE NOT PRESSED INSIDE
+;                            - C (BIT 2) - 1=MOUSE CLICKED INSIDE
+;                                          0=MOUSE NOT CLICKED INSIDE
+;                            NOTE THAT IF I=0 THEN P=C=0, IF I=1 AND P=0
+;                            THEN C=0.
+; =============================================================================
+
+; -----------------------------------------------------------------------------
+BTNINIT
+; INITIALIZES THE BUTTON BY:
+;  * COPYING THE SDB POINTER INTO THE VDB.
+;  * CLEARING THE STATUS BYTE.
+; INPUT    : A0 - POINTER TO THE VARIABLE DATABLOCK
+;            A1 - POINTER TO THE STATIC DATABLOCK
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+ MOVE.L D0,-(A7)
+  
+ MOVE.L A1,(A0) ;FICAM EL SDB
+ ADDA.L #4,A1
+ MOVE.B (A1),D0
+ CLR.B D0 ;NETEJAM EL BYTE CPI
+ MOVE.B D0,(A1)
+ SUBA.L #4,A1
+ 
+ MOVE.L (A7)+,D0
+
+ RTS
+
+
+; -----------------------------------------------------------------------------
+BTNUPD
+; UPDATES THE BUTTON VDB AND EXECUTES THE CALLBACK IF REQUIRED
+; INPUT    : A0 - POINTER TO THE VARIABLE DATABLOCK
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+  MOVEM.L D0-D7/A0-A3,-(A7)
+  
+  MOVE.L (A0),A1 ;SDB
+  
+  ADDA.L #4,A0
+  MOVE.B (A0),D0 ;CPI
+  MOVE D0,A2
+  
+  MOVE.W (A1),-(A7) ;YTOP
+  ADDA.L #2,A1 
+  MOVE.W (A1),-(A7) ;XLEFT
+  ADDA.L #2,A1
+  MOVE.W (A1),-(A7) ;HEIGHT
+  ADDA.L #2,A1
+  MOVE.W (A1),-(A7) ;WIDTH
+  ADDA.L #2,A1
+  MOVE.L (A1),A3 ;CALLBACK
+  
+  SUBQ #4,A7 ;RESERVAM ESPAIS PER RX Y LY
+  MOVE.W 4(A7),2(A7) ;AFEGIM WIDTH
+  MOVE.W 6(A7),(A7) ;AFEGIM HEIGHT
+  
+  MOVE.W 8(A7),D0 ;AGAFAM XLEFT
+  MOVE.W 10(A7),D1 ;AGAFAM YTOP
+  
+  ADD.W D0,2(A7) ;RX = WIDTH+XLEFT
+  ADD.W D1,(A7) ;LY = HEIGHT+YTOP
+  
+  MOVE.W 2(A7),D2
+  MOVE.W (A7),D3
+  
+  ADD.W #BTNPENWD,D1 ;YTOP
+  ADD.W #BTNPENWD,D0 ;XLEFT
+  SUB.W #BTNPENWD,D2 ;RX
+  SUB.W #BTNPENWD,D3 ;LY
+  
+  ;D0 = XLEFT D1= YTOP D2 = RX D3 = LY
+  ;PILA BUIDA 
+  
+  MOVE.W (MOUY),D4
+  MOVE.W (MOUX),D5
+  MOVE.B (MOUVAL),D6
+  MOVE.B (MOUEDGE),D7
+
+  ;MIRAM SI ESTEIM DEDINS O DEFORA
+  
+  ;(D0<=D5<=D2)
+  CMP D0,D5
+  BLO SURTI
+  CMP D2,D5
+  BHI SURTI
+  ;(D1<=D4<=D3)
+  CMP D1,D4
+  BLO SURTI
+  CMP D3,D4
+  BHI SURTI
+  ;SI S'HA COMPLIT 
+  
+  MOVE A2,D0
+  CLR.B D0
+  
+  ;A2 = CPI, D6 = MOUVAL, D7 = MOUEDGE
+
+  MOVE #1,D0
+  MOVE.B D7,D1
+  
+  AND.B #7,D7
+  BEQ SEGUENT
+  
+  CONTINUA1:
+  ADD #4,D0
+  JSR (A3)
+  
+  SEGUENT:
+  AND.B #7,D6
+  BEQ ACABA
+  
+  CONTINUA2:
+  ADD #2,D0
+  JMP ACABA
+ 
+  SURTI:
+  MOVE A2,D0
+  CLR.B D0
+  
+  ACABA:
+  MOVE.B D0,(A0)
+  
+  ADDQ #8,A7
+  ADDQ #4,A7
+
+  
+  MOVEM.L (A7)+,D0-D7/A0-A3
+  
+  RTS
+
+
+; -----------------------------------------------------------------------------
+BTNPLOT
+; PLOTS THE BUTTON. A RECTANGLE IS DRAWN WITH THICKNESS BTNPENWD. THE CONTOUR
+; COLOR IS BTNPENCL. THE FILL COLOR IS BLACK IF THE MOUSE IS NOT INSIDE,
+; BTNSELCL IF THE MOUSE IS INSIDE BUT THE MOUSE BUTTON IS NOT PRESSED AND
+; BTNPRSCL IF THE MOUSE BUTTON IS PRESSED INSIDE.
+; INPUT    : A0 - POINTER TO THE VARIABLE DATABLOCK
+; OUTPUT   : NONE
+; MODIFIES : NONE
+; -----------------------------------------------------------------------------
+
+; TODO : PLACE YOUR CODE HERE
+  MOVEM.L D0-D7/A0,-(A7)
+  
+  MOVE.L (A0),A1 ;SDB
+  ADDA.L #4,A0
+  MOVE.B (A0),D7 ;CPI
+  
+  
+  ;COLOR DIBUIXAT I GRUIXA PINZELL
+  MOVE.B #93,D0
+  MOVE.B #5,D1
+  TRAP #15
+  
+  MOVE.B #80,D0
+  MOVE.L #BTNPENCL,D1
+  TRAP #15
+  
+  CLR.W D1
+
+  ;MIRAR RATOLÍ
+  AND #1,D7 ; ESTEIM DEDINS O DEFORA?
+  BNE VERD
+  
+  MOVE.B (A0),D7 ;CPI
+  
+  ;COLORS 
+  
+  NEGRE:
+  MOVE.B #81,D0
+  MOVE.L #CLRBLACK,D1
+  
+  BRA SURT
+  
+  VERD:
+  MOVE.B #81,D0
+  MOVE.L #BTNSELCL ,D1
+  
+  MOVE.B (A0),D7 ;CPI
+  AND.B #2,D7 ;HEM PITJAT EL RATOLÍ?
+  BNE VERDFORT
+  BRA SURT
+  
+  VERDFORT:
+  MOVE.B #81,D0
+  MOVE.L #BTNPRSCL ,D1
+  
+  SURT:
+  TRAP #15
+  
+  MOVE.W (A1),-(A7) ;YTOP
+  ADDA.L #2,A1 ; SEGUENT WORD
+  MOVE.W (A1),-(A7) ;XLEFT
+  ADDA.L #2,A1
+  MOVE.W (A1),-(A7) ;HEIGHT
+  MOVE.W (A1),D5
+  ADDA.L #2,A1
+  MOVE.W (A1),-(A7) ;WIDTH
+  MOVE.W (A1),D6
+  ADDA.L #2,A1
+  ADDA.L #4,A1
+  
+  SUBQ #4,A7 ;RESERVAM ESPAIS PER RX Y LY
+  MOVE.W 4(A7),2(A7) ;AFEGIM WIDTH
+  MOVE.W 6(A7),(A7) ;AFEGIM HEIGHT
+  
+  MOVE.W 8(A7),D1 ;AGAFAM XLEFT
+  MOVE.W 10(A7),D2 ;AGAFAM YTOP
+  
+  ADD.W D1,2(A7) ;RX = WIDTH+XLEFT
+  ADD.W D2,(A7) ;LY = HEIGHT+YTOP
+  
+  MOVE.W 2(A7),D3
+  MOVE.W (A7),D4
+  
+  MOVE.B #87,D0 ;DIBUIXAM BOTÓ 
+  TRAP #15
+  
+  CLR.L D0
+  JSR UTLSTRLN ;OBTENIM LONGITUD STRING
+  
+  ;CALCULS PER A CENTRIFICAR L'STRING
+  SUB #CHRHEIGH,D5 ;
+  MOVE #CHRWIDTH,D7
+  MULU D0,D7
+  SUB D7,D6
+  
+  DIVU #2,D5
+  DIVU #2,D6
+  
+  ADD D5,D2
+  ADD D6,D1
+  
+  ;DIBUIXAM L'STRING
+  MOVE.B #95,D0
+  TRAP #15
+  
+  ADDQ #8,A7
+  ADDQ #4,A7
+  
+  MOVEM.L (A7)+,D0-D7/A0
+ 
+  RTS
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+*~Font name~Courier New~
+*~Font size~10~
+*~Tab type~1~
+*~Tab size~4~
